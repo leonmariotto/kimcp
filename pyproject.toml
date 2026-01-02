@@ -12,4 +12,6 @@ dependencies = [
 	"pytest",
 	"strictyaml",
 	"pydantic",
+	"mcp",
+	"kicad-python",
 ]
