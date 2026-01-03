@@ -80,6 +80,8 @@ def get_version(ctx: Context[ServerSession, AppContext]) -> str:
 )
 def run_server(debug: int):
     # Pass lifespan to server
-    mcp.run(transport="stdio")
+    mcp.run(transport="streamable-http")
+    # mcp.run(transport="http", host="127.0.0.1", port=8000, path="/mcp")
+
 
 
