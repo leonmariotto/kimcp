@@ -35,11 +35,18 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     if kicad is None:
         raise RuntimeError("Failed to connect to KiCad")
 
-    ## Optional sanity check (also sync -> run in thread)
-    #ok = await asyncio.to_thread(kicad.check_version)
-    #if not ok:
-    #    # choose your policy: raise to fail startup, or log and continue
-    #    logging.warning("KiCad instance and KiCad API version mismatch")
+    # Optional sanity check (also sync -> run in thread)
+    try :
+        _ = await asyncio.wait_for(
+            asyncio.to_thread(kicad.check_version),
+            timeout=3.0,
+        )
+    except asyncio.TimeoutError as e:
+        raise RuntimeError("Timed out waiting for KiCad IPC response. Is KiCad running ?") from e
+    except kipy.errors.FutureVersionError as e:
+        logging.warning("KiCad instance and KiCad API version mismatch")
+    except kipy.errors.ConnectionError as e:
+        raise RuntimeError("Failed to connect to KiCad ! Is kicad running ?") from e
     # DO NOT check version as the project run with kicad 9.0.6 and KiPy IPC API is only compatible with 9.0.5 for now.
     # Just wait for it to be compatible with 9.0.6.
 
