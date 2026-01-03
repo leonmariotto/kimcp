@@ -1,5 +1,4 @@
-""" KiMCP server
-"""
+"""KiMCP server"""
 
 import click
 import logging
@@ -18,9 +17,11 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
 
+
 @dataclass
 class AppContext:
     """Application context with typed dependencies."""
+
     kicad: kipy.KiCad
     lock: asyncio.Lock  # serialize access to KiCad
 
@@ -36,13 +37,15 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         raise RuntimeError("Failed to connect to KiCad")
 
     # Optional sanity check (also sync -> run in thread)
-    try :
+    try:
         _ = await asyncio.wait_for(
             asyncio.to_thread(kicad.check_version),
             timeout=3.0,
         )
     except asyncio.TimeoutError as e:
-        raise RuntimeError("Timed out waiting for KiCad IPC response. Is KiCad running ?") from e
+        raise RuntimeError(
+            "Timed out waiting for KiCad IPC response. Is KiCad running ?"
+        ) from e
     except kipy.errors.FutureVersionError as e:
         logging.warning("KiCad instance and KiCad API version mismatch")
     except kipy.errors.ConnectionError as e:
@@ -58,7 +61,9 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         # KiCad does not provide an explicit disconnect API.
         pass
 
+
 mcp = FastMCP("KiMCP", lifespan=lifespan)
+
 
 # Access type-safe lifespan context in tools
 @mcp.tool()
@@ -68,6 +73,7 @@ def get_version(ctx: Context[ServerSession, AppContext]) -> str:
     """
     kicad = ctx.request_context.lifespan_context.kicad
     return kicad.get_version().full_version
+
 
 @click.command()
 @click.option(
@@ -82,6 +88,3 @@ def run_server(debug: int):
     # Pass lifespan to server
     mcp.run(transport="streamable-http")
     # mcp.run(transport="http", host="127.0.0.1", port=8000, path="/mcp")
-
-
-

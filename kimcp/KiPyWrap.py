@@ -1,12 +1,8 @@
-
 import logging
 import click
 import kipy
 
-from kipy.board_types import (
-    BoardLayer,
-    Zone
-)
+from kipy.board_types import BoardLayer, Zone
 from kipy.common_types import PolygonWithHoles
 from kipy.geometry import PolyLine, PolyLineNode
 from kipy.util import from_mm
@@ -16,7 +12,8 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
 )
 
-class KiPyWrap():
+
+class KiPyWrap:
     def __init__(self):
         self.kicad = kipy.KiCad()
 
