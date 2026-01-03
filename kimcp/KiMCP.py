@@ -36,8 +36,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     if kicad is None:
         raise RuntimeError("Failed to connect to KiCad")
 
-    # Optional sanity check (also sync -> run in thread)
-    try:
+    try :
         _ = await asyncio.wait_for(
             asyncio.to_thread(kicad.check_version),
             timeout=3.0,
@@ -59,13 +58,12 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
         yield AppContext(kicad=kicad, lock=asyncio.Lock())
     finally:
         # KiCad does not provide an explicit disconnect API.
+        logging.debug("KiCad disconnect ...")
         pass
 
 
 mcp = FastMCP("KiMCP", lifespan=lifespan)
 
-
-# Access type-safe lifespan context in tools
 @mcp.tool()
 def get_version(ctx: Context[ServerSession, AppContext]) -> str:
     """
