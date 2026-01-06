@@ -1,4 +1,6 @@
-"""KiMCP server"""
+"""
+KiMCP server
+"""
 
 import click
 import logging
