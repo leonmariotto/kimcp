@@ -14,7 +14,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 import kipy
-from .KiBoardWorker import KiBoardWorker
+from .KiBoardWorker import KiBoardWorker, KiWorkerError
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -78,20 +78,53 @@ def get_version(ctx: Context[ServerSession, AppContext]) -> str:
 
 
 @mcp.tool()
-def search_footprints_by_ref(
-    ctx: Context[ServerSession, AppContext], ref_regex: str
+def get_footprints(
+    ctx: Context[ServerSession, AppContext], detailed: bool = False
 ) -> str:
     """
-    Get a footprint list matching regex "ref_regex" in their references name.
+    I should implement a query mechanism with the followin arguments:
+    {
+        "view": "index" | "detail" | "custom",
+        "select": ["id","ref","val","fp","at","bb","nets","h"],   // only if view="custom"
+        "where": { ... },                                         // filter predicates
+        "limit": 200,
+    }
+    The "where" can implement the following operator :
+      "ref": {"eq":"R10"}                         // exact
+      "ref": {"in":["R10","R11","R12"]}           // set
+      "ref": {"prefix":"R"}                       // startswith
+      "val": {"regex":"^4[.,]7K$"}                // regex (optional; can be expensive)
+      "fp": {"contains":"R_0805"}                 // substring
+      "bb": {"intersects":[xmin,ymin,xmax,ymax]}
+    Also, combinator operator are supported:
+    {
+        "and": [
+          {"ref": {"prefix":"R"}},
+          {"fp": {"contains":"0805"}},
+          {"at": {"within":[100,120,150,160]}}
+        ]
+    }
+    Concret example:
+    All resistors in a bbox:
+    {
+        "view":"index",
+        "where":{
+          "and":[
+            {"ref":{"prefix":"R"}},
+            {"at":{"within":[110,125,130,140]}}
+          ]
+        },
+        "limit":200
+    }
     """
     kiworker = ctx.request_context.lifespan_context.kiworker
-    return kiworker.search_footprints_by_ref(ref_regex)
+    return kiworker.get_footprints(detailed)
 
 
 @mcp.tool()
 def get_board_outline(ctx: Context[ServerSession, AppContext]) -> str:
     """
-    Get a list of board outlines. This can be used to delimit shape of the board.
+    Get a list of board outlines. This is used to delimit shape of the board.
     """
     kiworker = ctx.request_context.lifespan_context.kiworker
     return kiworker.get_board_outline()
@@ -106,15 +139,19 @@ def move_rotate_footprint(
     rotation: float,
 ) -> str:
     """
-    Used to move a footprint on the board. Footprint is identified by its schematics reference.
+    Used to move a footprint on the board. Footprint is identified by its reference.
     x_mm and y_mmc are given in milimeters. Rotation angle is in degree.
     """
     logging.debug(
         "ref:%s x_mm:%s y_mm:%s rotation:%s", ref, str(x_mm), str(y_mm), str(rotation)
     )
+    ret = '{"status": "ok"}'
     kiworker = ctx.request_context.lifespan_context.kiworker
-    kiworker.move_rotate_footprint(ref, x_mm, y_mm, rotation)
-    return '{"status": "ok"}'
+    try:
+        kiworker.move_rotate_footprint(ref, x_mm, y_mm, rotation)
+    except KiWorkerError:
+        ret = '{"status": "error"}'
+    return ret
 
 
 @mcp.tool()
@@ -125,9 +162,13 @@ def batch_place(
     Used to move a batch of components. Work the same way as move_rotate_footprint tool, but with a list of tuple
     containing (ref, x_mm, y_mm, rotation).
     """
+    ret = '{"status": "ok"}'
     kiworker = ctx.request_context.lifespan_context.kiworker
-    kiworker.batch_place(batch)
-    return '{"status": "ok"}'
+    try:
+        kiworker.batch_place(batch)
+    except KiWorkerError:
+        ret = '{"status": "error"}'
+    return ret
 
 
 @click.command()

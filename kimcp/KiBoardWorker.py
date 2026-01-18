@@ -1,7 +1,6 @@
 import logging
 import click
 import kipy
-import re
 import json
 
 from typing import Optional, List, Tuple
@@ -10,6 +9,11 @@ from kipy.geometry import Vector2, Angle
 from kipy.proto.common.types import KiCadObjectType
 from kipy.util.board_layer import layer_from_canonical_name
 from google.protobuf.json_format import MessageToDict  # KiCad IPC is based on protobuf
+
+from .protobuf_extract import (
+    proto_extract_footprint_short,
+    proto_extract_footprint_long,
+)
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -57,128 +61,16 @@ class KiBoardWorker:
         self.logger = logging.getLogger(__name__)
         self.board = self.kicad.get_board()
 
-    #   Theses are not used since we return the whole .proto for footprint.
-    #    @staticmethod
-    #    def extract_reference_from_footprint(fp: kipy.board_types.Footprint) -> Optional[str]:
-    #        """
-    #        Extract reference field from a KiCad footprint.
-    #        Depending of KiCad build it can be at different location.
-    #        """
-    #        ref = None
-    #        if hasattr(fp, "reference_field") and fp.reference_field and hasattr(fp.reference_field, "text"):
-    #            # fp.reference_field.text is usually a Text object; its string is often in .value
-    #            ref = getattr(fp.reference_field.text, "value", None) or str(fp.reference_field.text)
-    #    # Fallbacks sometimes present in some builds:
-    #        ref = ref or getattr(fp, "reference", None)
-    #        return ref
-    #
-    #    @staticmethod
-    #    def extract_position_from_footprint(fp: kipy.board_types.Footprint) -> Tuple[float, float]:
-    #        """
-    #        Return footprint position in milimeter.
-    #        """
-    #        pos = fp.position
-    #        x_mm = to_mm(pos.x)
-    #        y_mm = to_mm(pos.y)
-    #        return (x_mm, y_mm)
-    #
-    #    @staticmethod
-    #    def extract_angle_from_footprint(fp: kipy.board_types.Footprint) -> Optional[float]:
-    #        """
-    #        Return footprint angle in degree.
-    #        """
-    #        orient_deg = None
-    #        if hasattr(fp, "orientation") and fp.orientation is not None:
-    #            orient_deg = getattr(fp.orientation, "degrees", None)
-    #            if orient_deg is None:
-    #                # if Angle prints like "Angle(...)" but no .degrees
-    #                orient_deg = float(fp.orientation)
-    #
-    #        # Proto fallback (if needed)
-    #        if orient_deg is None and hasattr(fp, "proto"):
-    #            # Some schemas store rotation/orientation in proto; field name can vary.
-    #            for name in ("orientation", "rotation", "angle"):
-    #                if hasattr(fp.proto, name):
-    #                    orient_deg = getattr(fp.proto, name)
-    #                    break
-    #        return orient_deg
-
-    #   def get_footprints_overview(self) -> str:
-    #       """
-    #       Current implementation return a home-maid json.
-    #       """
-    #
-    #       js_repr = "{\n"
-    #       for fp in footprints:
-    #           js_repr +=  "\t{\n"
-    #           # js_repr += f"\t\t\"id\": \"{fp.id.value}\",\n"
-    #           js_repr += f"\t\t\"ref\": \"{KiBoardWorker.extract_reference_from_footprint(fp)}\",\n"
-    #           js_repr += f"\t\t\"angle\": \"{str(KiBoardWorker.extract_angle_from_footprint(fp))}\",\n"
-    #           pos_x, pos_y = KiBoardWorker.extract_position_from_footprint(fp)
-    #           js_repr += f"\t\t\"pos_x\": \"{str(pos_x)}\",\n"
-    #           js_repr += f"\t\t\"pos_y\": \"{str(pos_y)}\",\n"
-    #           js_repr +=  "\t},\n"
-    #       js_repr += "}"
-    #       self.logger.debug("Got %d footprints js_repr=[%s]", len(footprints), js_repr)
-    #       return js_repr
-
-    @staticmethod
-    def footprint_to_json(
-        fps: List[kipy.board_types.Footprint],
-        *,
-        preserving_proto_field_name=True,
-        indent=2,
-    ):
-        dicts = []
-        for fp in fps:
-            msg = getattr(fp, "proto", None)
-            if msg is None:
-                raise TypeError(
-                    "This FootprintInstance does not expose .proto in this KiPy build."
-                )
-
-            dicts.append(
-                MessageToDict(
-                    msg,
-                    preserving_proto_field_name=preserving_proto_field_name,
-                    # Often helpful so enums show as ints (stable for downstream code):
-                    use_integers_for_enums=True,
-                    # Keep default fields if you want a consistent schema:
-                    always_print_fields_with_no_presence=True,
-                )
-            )
-        return json.dumps(dicts, indent=indent)
-
-    def get_footprints(self) -> str:
+    def get_footprints(self, detailed: bool = False, indent=2) -> str:
         """ """
         footprints = self.board.get_footprints()
-        out = KiBoardWorker.footprint_to_json(footprints)
-        self.logger.debug("Got %d footprints js_repr=[%s]", len(footprints), out)
-        return out
-
-    def _search_footprints_by_ref(
-        self, ref_regex: str
-    ) -> List[kipy.board_types.Footprint]:
-        """
-        Return footprint if reference found in board's footprint list.
-        Otherwise return None.
-        """
-        result = []
-        for fp in self.board.get_footprints():
-            fp_ref = (
-                fp.reference_field.text.value
-            )  # reference is stored in the reference field text
-            if re.search(ref_regex, fp_ref) is not None:
-                self.logger.debug("Found footprints ref %s", fp_ref)
-                result += [fp]
-        return result
-
-    def search_footprints_by_ref(self, ref_regex) -> str:
-        """
-        Current implementation return a home-maid json.
-        """
-        footprints = self._search_footprints_by_ref(ref_regex)
-        out = KiBoardWorker.footprint_to_json(footprints)
+        dicts = []
+        for fp in footprints:
+            if not detailed:
+                dicts += [proto_extract_footprint_short(fp)]
+            else:
+                dicts += [proto_extract_footprint_long(fp)]
+        out = json.dumps(dicts, indent=indent)
         self.logger.debug("Got %d footprints js_repr=[%s]", len(footprints), out)
         return out
 
@@ -194,8 +86,7 @@ class KiBoardWorker:
             if fp_ref == ref:
                 self.logger.debug("Found footprints ref %s", ref)
                 return fp
-        self.logger.warning("Footprints ref %s not found", ref)
-        return None
+        raise KiWorkerError("Footprint ref %s not found" % ref)
 
     def move_rotate_footprint(
         self, ref: str, x_mm: float, y_mm: float, rotation_angle: float
@@ -324,5 +215,5 @@ def test_kicad():
     kiwork = KiBoardWorker()
     logging.debug("KiBoardWorker init !")
     kiwork.get_footprints()
-    kiwork.get_board_outline()
-    kiwork.move_rotate_footprint("U1", 145.75, 88.25, 270)
+    # kiwork.get_board_outline()
+    # kiwork.move_rotate_footprint("U1", 145.75, 88.25, 270)
