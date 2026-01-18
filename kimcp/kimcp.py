@@ -82,7 +82,7 @@ def get_footprints(
     ctx: Context[ServerSession, AppContext], detailed: bool = False
 ) -> str:
     """
-    I should implement a query mechanism with the followin arguments:
+    I should implement a query mechanism with the followinq arguments:
     {
         "view": "index" | "detail" | "custom",
         "select": ["id","ref","val","fp","at","bb","nets","h"],   // only if view="custom"

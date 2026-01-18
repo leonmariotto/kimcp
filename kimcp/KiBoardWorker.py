@@ -6,7 +6,6 @@ import json
 from typing import Optional, List, Tuple
 
 from kipy.geometry import Vector2, Angle
-from kipy.proto.common.types import KiCadObjectType
 from kipy.util.board_layer import layer_from_canonical_name
 from google.protobuf.json_format import MessageToDict  # KiCad IPC is based on protobuf
 
@@ -27,33 +26,7 @@ class KiWorkerError(Exception):
 
 class KiBoardWorker:
     """
-    Should implement the core functions for the following tools :
-    pcb_load(board_path)
-      - Args: board_path: string (path to .kicad_pcb)
-      - Output: success boolean
-      - Purpose: open the board to work on.
-      - __init__ of KiBoardWorker.
-    pcb_list_footprints()
-      - Output: list of footprints with refs, current pos/rot,
-            footprint name, and assigned nets per pad
-      - Purpose: inventory what needs placement.
-    pcb_get_nets()
-      - Output: list of nets with connected pads/footprints
-      - Purpose: understand connectivity to minimize crossings.
-    pcb_move_rotate_footprint(ref, x, y, rotation)
-      - Args: ref: string, x/y: float (mm), rotation: float (deg)
-      - Output: success boolean (or updated footprint info)
-      - Purpose: place a specific footprint precisely.
-    pcb_batch_place(placements)
-      - Args: placements: array of {ref, x, y, rotation}
-      - Output: per-ref success/errors
-      - Purpose: apply multiple placements efficiently.
-    pcb_get_board_outline()
-      - Output: polygon/segments of edge cuts
-      - Purpose: keep placements inside the outline.
-    pcb_save()
-      - Output: success boolean
-      - Purpose: persist changes.
+    Worker class, contain the kicad instance.
     """
 
     def __init__(self):
@@ -167,43 +140,6 @@ class KiBoardWorker:
         out = KiBoardWorker.boardshapes_to_json(edge_cuts_shapes)
         self.logger.debug("Board edges cuts json = %s", out)
         return out
-
-    def get_board_info(self):
-        """
-        The main API here is get_items, it take a list of id in parameters to filter which item
-        it return.
-        Here's the list of types :
-            - KiCadObjectType.KOT_UNKNOWN
-                    - KiCadObjectType.KOT_PCB_FOOTPRINT
-                    - KiCadObjectType.KOT_PCB_PAD
-                    - KiCadObjectType.KOT_PCB_SHAPE
-                    - KiCadObjectType.KOT_PCB_REFERENCE_IMAGE
-                    - KiCadObjectType.KOT_PCB_FIELD
-                    - KiCadObjectType.KOT_PCB_GENERATOR
-                    - KiCadObjectType.KOT_PCB_TEXT
-                    - KiCadObjectType.KOT_PCB_TEXTBOX
-                    - KiCadObjectType.KOT_PCB_TABLE
-                    - KiCadObjectType.KOT_PCB_TABLECELL
-                    - KiCadObjectType.KOT_PCB_TRACE
-                    - KiCadObjectType.KOT_PCB_VIA
-                    - KiCadObjectType.KOT_PCB_ARC
-                    - KiCadObjectType.KOT_PCB_MARKER
-                    - KiCadObjectType.KOT_PCB_DIMENSION
-                    - KiCadObjectType.KOT_PCB_ZONE
-                    - KiCadObjectType.KOT_PCB_GROUP
-        Obtain the full list by running :
-        print([name for name in KiCadObjectType.keys()])
-        """
-        board = self.kicad.get_board()
-        logging.debug("Board={%s}", str(board))
-        logging.debug("Copper layers={%s}", str(board.get_copper_layer_count()))
-        logging.debug(
-            "Trace list={%s}",
-            str(board.get_items(types=[KiCadObjectType.KOT_PCB_TRACE])),
-        )
-        # logging.debug("Items list={%s}", str(board.get_items()))
-        # logging.debug("Dimensions={%s}", str(board.get_dimensions()))
-        # kipy.errors.ApiError: KiCad returned error: none of the requested types are valid for a Board object
 
     def check_version(self):
         return self.kicad.check_version()
