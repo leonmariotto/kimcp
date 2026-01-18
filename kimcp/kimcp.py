@@ -5,6 +5,7 @@ KiMCP server
 import click
 import logging
 import asyncio
+from typing import List, Tuple
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.session import ServerSession
 
 import kipy
+from .KiBoardWorker import KiBoardWorker
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -24,30 +26,29 @@ logging.basicConfig(
 class AppContext:
     """Application context with typed dependencies."""
 
-    kicad: kipy.KiCad
+    kiworker: KiBoardWorker
     lock: asyncio.Lock  # serialize access to KiCad
 
 
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     # KiCad Python bindings connect synchronously on construction.
-    kicad = await asyncio.to_thread(
-        kipy.KiCad,
-        timeout_ms=2000,
+    kiworker = await asyncio.to_thread(
+        KiBoardWorker,
     )
-    if kicad is None:
+    if kiworker is None:
         raise RuntimeError("Failed to connect to KiCad")
 
-    try :
+    try:
         _ = await asyncio.wait_for(
-            asyncio.to_thread(kicad.check_version),
+            asyncio.to_thread(kiworker.check_version),
             timeout=3.0,
         )
     except asyncio.TimeoutError as e:
         raise RuntimeError(
             "Timed out waiting for KiCad IPC response. Is KiCad running ?"
         ) from e
-    except kipy.errors.FutureVersionError as e:
+    except kipy.errors.FutureVersionError:
         logging.warning("KiCad instance and KiCad API version mismatch")
     except kipy.errors.ConnectionError as e:
         raise RuntimeError("Failed to connect to KiCad ! Is kicad running ?") from e
@@ -57,7 +58,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
     logging.debug("Connected to kicad")
 
     try:
-        yield AppContext(kicad=kicad, lock=asyncio.Lock())
+        yield AppContext(kiworker=kiworker, lock=asyncio.Lock())
     finally:
         # KiCad does not provide an explicit disconnect API.
         logging.debug("KiCad disconnect ...")
@@ -66,13 +67,67 @@ async def lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
 
 mcp = FastMCP("KiMCP", lifespan=lifespan)
 
+
 @mcp.tool()
 def get_version(ctx: Context[ServerSession, AppContext]) -> str:
     """
     Get version of the running kicad instance.
     """
-    kicad = ctx.request_context.lifespan_context.kicad
-    return kicad.get_version().full_version
+    kiworker = ctx.request_context.lifespan_context.kiworker
+    return kiworker.kicad.get_version().full_version
+
+
+@mcp.tool()
+def search_footprints_by_ref(
+    ctx: Context[ServerSession, AppContext], ref_regex: str
+) -> str:
+    """
+    Get a footprint list matching regex "ref_regex" in their references name.
+    """
+    kiworker = ctx.request_context.lifespan_context.kiworker
+    return kiworker.search_footprints_by_ref(ref_regex)
+
+
+@mcp.tool()
+def get_board_outline(ctx: Context[ServerSession, AppContext]) -> str:
+    """
+    Get a list of board outlines. This can be used to delimit shape of the board.
+    """
+    kiworker = ctx.request_context.lifespan_context.kiworker
+    return kiworker.get_board_outline()
+
+
+@mcp.tool()
+def move_rotate_footprint(
+    ctx: Context[ServerSession, AppContext],
+    ref: str,
+    x_mm: float,
+    y_mm: float,
+    rotation: float,
+) -> str:
+    """
+    Used to move a footprint on the board. Footprint is identified by its schematics reference.
+    x_mm and y_mmc are given in milimeters. Rotation angle is in degree.
+    """
+    logging.debug(
+        "ref:%s x_mm:%s y_mm:%s rotation:%s", ref, str(x_mm), str(y_mm), str(rotation)
+    )
+    kiworker = ctx.request_context.lifespan_context.kiworker
+    kiworker.move_rotate_footprint(ref, x_mm, y_mm, rotation)
+    return '{"status": "ok"}'
+
+
+@mcp.tool()
+def batch_place(
+    ctx: Context[ServerSession, AppContext], batch: List[Tuple[str, float, float, int]]
+) -> str:
+    """
+    Used to move a batch of components. Work the same way as move_rotate_footprint tool, but with a list of tuple
+    containing (ref, x_mm, y_mm, rotation).
+    """
+    kiworker = ctx.request_context.lifespan_context.kiworker
+    kiworker.batch_place(batch)
+    return '{"status": "ok"}'
 
 
 @click.command()
